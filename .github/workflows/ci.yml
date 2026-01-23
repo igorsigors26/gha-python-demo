@@ -33,4 +33,4 @@ jobs:
 
       - name: Tests
         run: |
-          pytest -q
+           PYTHONPATH=src pytest -q
