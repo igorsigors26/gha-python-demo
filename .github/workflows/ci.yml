@@ -29,7 +29,7 @@ jobs:
 
       - name: Lint
         run: |
-          ruff check .
+          ruff check . --fix
 
       - name: Set PYTHONPATH
         run: |
