@@ -43,10 +43,13 @@ CHAT_MODEL_CANDIDATES = [
 CHUNK_CHARS = 1200
 OVERLAP_CHARS = 200
 
-# Qdrant config (self-hosted)
-QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY") or None
+# Qdrant Cloud config
+QDRANT_URL = os.getenv("QDRANT_URL")  # e.g., "https://xxxxx.qdrant.io"
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")  # Cloud API key (required)
 QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "condo_docs")
+
+if not QDRANT_URL or not QDRANT_API_KEY:
+    raise RuntimeError("Set QDRANT_URL and QDRANT_API_KEY for Qdrant Cloud (or set in .env file)")
 
 
 # -----------------------------
@@ -126,30 +129,45 @@ def embed_texts(texts: List[str]) -> np.ndarray:
 # Qdrant helpers (store + retrieve)
 # -----------------------------
 def qdrant_client() -> QdrantClient:
+    """Connect to Qdrant Cloud with URL and API key."""
     return QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
 
 def ensure_collection(vector_size: int) -> None:
     client = qdrant_client()
     existing = {c.name for c in client.get_collections().collections}
-    if QDRANT_COLLECTION in existing:
-        # Optional: you could validate the vector size here if you want.
-        return
-
-    client.create_collection(
-        collection_name=QDRANT_COLLECTION,
-        vectors_config=qmodels.VectorParams(
-            size=vector_size,
-            distance=qmodels.Distance.COSINE,
-        ),
-    )
     
-    # Create payload index on condo_id for fast filtering
-    client.create_payload_index(
-        collection_name=QDRANT_COLLECTION,
-        field_name="condo_id",
-        field_schema=qmodels.PayloadSchemaParams(type=qmodels.PayloadSchemaType.INTEGER),
-    )
+    if QDRANT_COLLECTION not in existing:
+        client.create_collection(
+            collection_name=QDRANT_COLLECTION,
+            vectors_config=qmodels.VectorParams(
+                size=vector_size,
+                distance=qmodels.Distance.COSINE,
+            ),
+        )
+    
+    # Qdrant Cloud requires payload indexes for filtering
+    # Create index for condo_id (integer filter)
+    try:
+        client.create_payload_index(
+            collection_name=QDRANT_COLLECTION,
+            field_name="condo_id",
+            field_schema="integer",
+        )
+    except Exception as e:
+        if "already exists" not in str(e).lower():
+            print(f"Note: condo_id index - {e}")
+    
+    # Create index for source (keyword filter)
+    try:
+        client.create_payload_index(
+            collection_name=QDRANT_COLLECTION,
+            field_name="source",
+            field_schema="keyword",
+        )
+    except Exception as e:
+        if "already exists" not in str(e).lower():
+            print(f"Note: source index - {e}")
 
 
 def qdrant_has_source(condo_id: int, source_name: str) -> bool:
