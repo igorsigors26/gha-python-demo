@@ -22,22 +22,18 @@ load_dotenv()
 # -----------------------------
 # Config
 # -----------------------------
-HF_TOKEN = os.environ.get("HF_TOKEN")
-if not HF_TOKEN:
-    raise RuntimeError("Set HF_TOKEN first: export HF_TOKEN='hf_...' (or set it in Windows)")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    raise RuntimeError("Set GROQ_API_KEY first: export GROQ_API_KEY='gsk_...' (or set in .env)")
 
-# HF OpenAI-compatible router for chat
-hf_client = OpenAI(api_key=HF_TOKEN, base_url="https://router.huggingface.co/v1")
+# Groq OpenAI-compatible API client
+groq_client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
 
 # Local embedding model (stable)
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
-# Chat model candidates (availability varies by HF account/provider)
-CHAT_MODEL_CANDIDATES = [
-    "HuggingFaceH4/zephyr-7b-beta",
-    "mistralai/Mistral-7B-Instruct-v0.2",
-    "meta-llama/Llama-3.1-8B-Instruct",
-]
+# Chat model (Groq free tier models)
+CHAT_MODEL = "llama-3.1-8b-instant"
 
 # Chunking params (tune if you want)
 CHUNK_CHARS = 1200
@@ -302,7 +298,7 @@ def retrieve_qdrant(query: str, condo_id: int, k: int = 6, source_filter: Option
 
 
 # -----------------------------
-# Generation (HF chat)
+# Generation (Groq OpenAI-compatible API)
 # -----------------------------
 def chat_generate(question: str, retrieved: List[Tuple[Chunk, float]]) -> str:
     # Build context with citations
@@ -326,19 +322,15 @@ def chat_generate(question: str, retrieved: List[Tuple[Chunk, float]]) -> str:
         }
     ]
 
-    last_err = None
-    for model in CHAT_MODEL_CANDIDATES:
-        try:
-            resp = hf_client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=0,
-            )
-            return resp.choices[0].message.content
-        except Exception as e:
-            last_err = e
-
-    raise RuntimeError(f"No HF chat model worked. Last error: {last_err}")
+    try:
+        resp = groq_client.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=messages,
+            temperature=0,
+        )
+        return resp.choices[0].message.content
+    except Exception as e:
+        raise RuntimeError(f"Groq API error: {e}")
 
 
 # -----------------------------
